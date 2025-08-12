@@ -1,29 +1,19 @@
-from flask import Flask, render_template, request
+# streamlit_app.py
+import streamlit as st
 import fitz  # PyMuPDF
+import re
 import os
-import logging
 
-app = Flask(__name__)
-
-# Disable Flask and Werkzeug logging
-log = logging.getLogger('werkzeug')
-log.setLevel(logging.ERROR)
-
-# Configure uploads folder
-UPLOAD_FOLDER = "uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-def extract_info_from_pdf(pdf_path):
+# ========== PDF Parsing Function ==========
+def extract_info_from_pdf(pdf_file):
     text = ""
     try:
-        with fitz.open(pdf_path) as pdf:
+        with fitz.open(stream=pdf_file.read(), filetype="pdf") as pdf:
             for page in pdf:
                 text += page.get_text()
-    except Exception as e:
-        text = "Error reading PDF."
+    except Exception:
+        return {"Error": "Error reading PDF."}
 
-    # Simple parsing logic (you can improve)
     extracted_info = {
         "Name": "",
         "Email": "",
@@ -37,7 +27,6 @@ def extract_info_from_pdf(pdf_path):
         extracted_info["Name"] = lines[0].strip()
 
     # Extract Email
-    import re
     email_match = re.search(r'\S+@\S+', text)
     if email_match:
         extracted_info["Email"] = email_match.group()
@@ -54,30 +43,26 @@ def extract_info_from_pdf(pdf_path):
 
     return extracted_info
 
-@app.route('/')
-def index():
-    return render_template('index.html')
 
-@app.route('/upload', methods=['POST'])
-def upload():
-    file = request.files['resume']
-    if file and file.filename.endswith('.pdf'):
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-        file.save(filepath)
+# ========== Streamlit UI ==========
+st.set_page_config(page_title="AI Resume Parser", page_icon="📄", layout="centered")
 
-        extracted_info = extract_info_from_pdf(filepath)
+st.title("📄 AI Resume Parser")
+st.write("Upload a PDF resume to extract key details.")
 
-        # Pass data to result.html
-        return render_template('result.html', extracted_info=extracted_info)
+uploaded_file = st.file_uploader("Upload Resume (PDF only)", type=["pdf"])
 
-    return "Invalid file format. Please upload a PDF."
+if uploaded_file is not None:
+    with st.spinner("Extracting information..."):
+        extracted_info = extract_info_from_pdf(uploaded_file)
 
-if __name__ == '__main__':
-    import sys
-    import os
+    if "Error" in extracted_info:
+        st.error(extracted_info["Error"])
+    else:
+        st.subheader("✅ Extracted Information")
+        st.write(f"**Name:** {extracted_info['Name']}")
+        st.write(f"**Email:** {extracted_info['Email']}")
+        st.write(f"**Phone:** {extracted_info['Phone']}")
+        st.write(f"**Skills:** {', '.join(extracted_info['Skills']) if extracted_info['Skills'] else 'No skills found'}")
 
-    # Redirect stdout and stderr to null
-    sys.stdout = open(os.devnull, 'w')
-    sys.stderr = open(os.devnull, 'w')
-
-    app.run(debug=False)
+     
